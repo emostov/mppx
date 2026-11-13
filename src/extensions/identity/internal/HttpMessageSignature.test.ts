@@ -70,6 +70,21 @@ test('rejects non-ASCII signed HTTP header values', async () => {
   ).rejects.toThrow('Signed HTTP header "x-example" is not ASCII.')
 })
 
+test('rejects a Signer with an unsupported algorithm', async () => {
+  await expect(
+    HttpMessageSignature.sign(new Request('https://example.com'), {
+      components: ['@authority'],
+      key: {
+        algorithm: 'hmac-sha256' as typeof Algorithms.ed25519,
+        sign: async () => new Uint8Array(32),
+      },
+      keyId: 'test-key',
+      label: 'test',
+      tag: 'test',
+    }),
+  ).rejects.toThrow(TypeError)
+})
+
 function vectorRequest(parameters: { input: string; signature: string }): Request {
   return new Request('https://example.com/foo?param=Value&Pet=dog', {
     headers: {

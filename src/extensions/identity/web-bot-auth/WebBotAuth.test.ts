@@ -42,6 +42,39 @@ test('emits and verifies a signed Signature-Agent member', async () => {
   })
 })
 
+test('signs with a remote Signer exactly as with the CryptoKey it wraps', async () => {
+  const keys = await keyPair()
+  const keyId = await jwkThumbprint(keys.publicKey)
+  const signed: Uint8Array[] = []
+  const signer: Signatures.Signer = {
+    algorithm: Signatures.Algorithms.ed25519,
+    async sign(data) {
+      signed.push(data)
+      return new Uint8Array(
+        await crypto.subtle.sign('Ed25519', keys.privateKey, new Uint8Array(data)),
+      )
+    },
+  }
+  const config = { scope: '*', keyId, signatureAgent: 'https://agent.example' } as const
+  const context = attempt()
+  const request = new Request('https://merchant.example/resource')
+  const remote = await WebBotAuth.Client.prover({ ...config, key: signer }).prove(request, context)
+  const local = await WebBotAuth.Client.prover({ ...config, key: keys.privateKey }).prove(
+    request,
+    context,
+  )
+
+  expect(signed).toHaveLength(1)
+  for (const header of ['Signature', 'Signature-Input', 'Signature-Agent'])
+    expect(remote.headers.get(header)).toBe(local.headers.get(header))
+  expect(
+    await WebBotAuth.Server.verifier({
+      keyResolver: () => keys.publicKey,
+      nonceStore: Identity.Store.memory(),
+    }).verify(remote),
+  ).toMatchObject({ status: 'valid', value: { keyId } })
+})
+
 test('signs and verifies RSA-PSS SHA-512', async () => {
   const keys = await rsaKeyPair()
   const keyId = await jwkThumbprint(keys.publicKey)
